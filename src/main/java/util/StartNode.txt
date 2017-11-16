@@ -1,0 +1,185 @@
+
+'**********************************************************************************************
+'*  Script Name     : Node Initializer
+'*  Script Purpose  : To start the selenium Grid node with appropriate OS Name and Version
+'*  Author          : Johnson Solomon D
+'*  Last Modified   : 02-Jan-2013 (Add Code to check for Environment Variable)
+'*  Last Modified   : 21-Jan-2013 (To change environment value, UAC should be disabled in WIN Vista or Win 7 machines. So display alert and let the user modify the settings)
+'**********************************************************************************************
+
+
+'*-*-*-*-*- Detecting the OS Name and Version*-*-*-*-*-
+Set oShell = CreateObject("WScript.Shell")
+cmdexec = "%comspec% /c systeminfo | findstr /b /C:" & Chr(34) & "Host Name" & Chr(34) & " /C:" & Chr(34) & "OS Name" & Chr(34) & " /C:" & Chr(34) & "System " & Chr(34) & ""
+Set oShellExec = oShell.Exec(cmdexec)
+Set oStdOutputText = oShellExec.StdOut
+Do While Not oStdOutputText.AtEndOfStream
+    CurrentLine = oStdOutputText.ReadLine
+    If InStr(CurrentLine, "Host Name") Then HostName = CurrentLine
+    If InStr(CurrentLine, "OS Name") Then OSName = CurrentLine
+    If InStr(1, CurrentLine, "System Type", 1) Then
+        OSVersion = CurrentLine
+        Exit Do
+    End If
+Loop
+
+'Set HostName
+HostName = Replace(HostName, "Host Name:", "")
+HostName = Trim(UCase(HostName))
+
+'Set OSName
+OSName = UCase(OSName)
+If InStr(OSName, "XP") Then
+    OSName = "WINXP"
+ElseIf InStr(OSName, "VISTA") Then
+    OSName = "WINVISTA"
+ElseIf InStr(OSName, "WINDOWS 7") Then
+    OSName = "WIN7"
+ElseIf InStr(OSName, "WINDOWS 8") Then
+    OSName = "WIN8"
+End If
+
+'Set OSVersion
+If InStr(OSVersion, "X86") Then
+    OSName = OSName & "32"
+    IEDriver = "IEDriverServer32.exe"
+    JavaPath = "C:\Program Files\Java\jre6\bin"
+Else
+    OSName = OSName & "64"
+    IEDriver = "IEDriverServer64.exe"
+    JavaPath = "C:\Program Files (x86)\Java\jre6\bin"
+End If
+
+'MsgBox OSName
+
+'*-*-*-*-*- Check for the System Environment variable *-*-*-*-*-
+LibPath = "T:\MS-Automation\Common\lib\"
+Set oFSO = CreateObject("Scripting.FileSystemObject")
+LibPAth = "T:\MS-Automation\Common\lib\"
+
+If (Not oFSO.FolderExists(LibPAth)) Then
+     LibPAth = "D:\AutoShared\MS-Automation\Common\lib\"
+End If
+Set oFSO = Nothing
+
+Set oEnv = oShell.Environment("SYSTEM")
+NeedToRestart = False
+isJavaInstalled = True
+
+'Java - JRE6
+CurrentValue = oEnv("PATH")
+If InStr(CurrentValue, JavaPath) = 0 Then
+    Set oFSO = CreateObject("Scripting.FileSystemObject")
+    If oFSO.Folderexists(JavaPath) Then
+        MsgBox "Please add the path " + JavaPath + " to the Environment variable 'PATH'", 48
+        NeedToRestart = True
+        AddValue = AddValue & JavaPath
+    Else
+        MsgBox "Please install Java JRE6 and add its path to the Environment variable 'PATH'", 48
+        isJavaInstalled = False
+    End If
+    Set oFSO = Nothing
+End If
+
+'SIKULI LIB
+If InStr(CurrentValue, "%SIKULI_HOME%libs\") = 0 Then
+    AddValue = AddValue & "%SIKULI_HOME%libs\;"
+    MsgBox "Please add '%SIKULI_HOME%libs\' to the Environment variable 'PATH'"
+End If
+
+If AddValue <> "" Then
+    If Right(CurrentValue, 1) <> ";" Then AddValue = ";" & AddValue
+    'oEnv("PATH") = CurrentValue & AddValue
+    NeedToRestart = True
+End If
+
+'SIKULI HOME
+SikuliHomePath = LibPath & "Sikuli\Sikuli-IDE\"
+If oEnv("SIKULI_HOME") <> SikuliHomePath Then
+    MsgBox "Please add " + SikuliHomePath + " to the Environment variable 'SIKULI_HOME'"
+    'oEnv("SIKULI_HOME") = SikuliHomePath
+    NeedToRestart = True
+End If
+
+If (Not (isJavaInstalled) Or NeedToRestart) Then
+    MsgBox "Restart the system, after an installation or Environment path modification"
+End If
+
+NodeOSHostName = OSName +"-" +HostName
+HUBIPAddress = GetHUBIPAddress()
+'msgbox NodeOSHostName
+
+If isJavaInstalled Then
+    If Not NeedToRestart Then
+        '*-*-*-*-*- Grid Node and PopUpHandler is started*-*-*-*-*-
+        'Start to Hold
+        'oShell.Run "Hold.vbs"
+        
+        'Starting the Node
+        Nodecmd = Chr(34) & JavaPath & "\java" & Chr(34) & " -jar " & Chr(34) & LibPath & "selenium-server-standalone-2.45.0.jar" & Chr(34) & " -role node -port 4445 -hub http://"& HUBIPAddress &":4444/grid/register"
+        IEDriver = " -Dwebdriver.ie.driver=" & Chr(34) & LibPath & IEDriver & Chr(34)
+        GCDriver = " -Dwebdriver.chrome.driver=" & Chr(34) & LibPath & "chromedriverWIN.exe" & Chr(34)
+        Win8cmd = " -Dos.name=" & Chr(34) & "windows" & Chr(34)
+        IEcmd = " -browser " & Chr(34) & "browserName=internet explorer,version=" & NodeOSHostName & ",platform=ANY,maxInstances=1" & Chr(34)
+        FFcmd = " -browser " & Chr(34) & "browserName=firefox,version=" & NodeOSHostName & ",platform=ANY,maxInstances=2" & Chr(34)
+        GCcmd = " -browser " & Chr(34) & "browserName=chrome,version=" & NodeOSHostName & ",platform=ANY,maxInstances=1" & Chr(34)
+        SAcmd = " -browser " & Chr(34) & "browserName=safari,version=" & NodeOSHostName & ",platform=ANY,maxInstances=1" & Chr(34)
+        OPcmd = " -browser " & Chr(34) & "browserName=opera,version=" & NodeOSHostName & ",platform=ANY,maxInstances=1" & Chr(34)
+        TitleCmd = "Title Node for " & NodeOSHostName & " is running"
+        
+        If OSName = "WIN832" Then
+            oShell.Run "cmd /k " & TitleCmd & "&&" & Nodecmd & IEDriver & GCDriver & IEcmd & FFcmd & GCcmd & SAcmd
+            'oShell.Run "cmd /k " & TitleCmd & "&&" & Replace(Nodecmd, "-port 4445", "-port 4446") & Win8cmd & OPcmd
+        Else
+            oShell.Run "cmd /k " & TitleCmd & "&&" & Nodecmd & IEDriver & GCDriver & IEcmd & FFcmd & GCcmd & SAcmd & OPcmd
+        End If
+        
+        'Starting the PopUpHandler
+        TitleCmd = "Title Sikuli for " & NodeOSHostName & " is running"
+        Sikulicmd = Chr(34) & JavaPath & "\java" & Chr(34) & " -jar " & Chr(34) & LibPath & "Sikuli\sikuli-server-win-with-dependencies-0.0.1.jar" & Chr(34)
+        oShell.Run "cmd /k " & TitleCmd & "&&" & Sikulicmd
+        'inputbox "hello", "test", "cmd /k " & TitleCmd & "&&" & Sikulicmd
+        
+    Else
+        'MsgBox "Environment Variables are set just now, Please restart the system..", 64
+    End If
+Else
+    'MsgBox "Please install Java JRE6 and try again.", 48
+End If
+
+
+
+Function GetHUBIPAddress()
+
+strComputer = "."
+Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\cimv2")
+Set IPConfigSet = objWMIService.ExecQuery("Select IPAddress from Win32_NetworkAdapterConfiguration ")
+IsTheIPFound = False
+
+For Each IPConfig In IPConfigSet
+    
+    If (IsTheIPFound) Then
+        Exit For
+    End If
+
+    If Not IsNull(IPConfig.IPAddress) Then
+        For i = LBound(IPConfig.IPAddress) To UBound(IPConfig.IPAddress)
+            If (InStr(IPConfig.IPAddress(i), "10.")) Then
+                CurrentMachineIP = IPConfig.IPAddress(i)
+                IsTheIPFound = True
+                Exit For
+            End If
+        Next
+    End If
+Next
+
+
+If (InStr(CurrentMachineIP, "10.145.197.")) Then
+    HUBIP = CurrentMachineIP 'HUB PC in ODC
+Else
+    HUBIP = CurrentMachineIP 'HUB PC in LAB6. IP of ds-d4bed9bd47fb
+End If
+
+GetHUBIPAddress = HUBIP
+
+End Function
